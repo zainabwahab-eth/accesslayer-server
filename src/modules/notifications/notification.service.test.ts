@@ -36,6 +36,7 @@ jest.mock('../../utils/prisma.utils', () => ({
    prisma: {
       trade: { findMany: jest.fn() },
       keyOwnership: { findMany: jest.fn(), count: jest.fn() },
+      creatorProfile: { findMany: jest.fn() },
       creatorPriceSnapshot: { findMany: jest.fn() },
    },
 }));
@@ -68,16 +69,26 @@ describe('notification.service', () => {
             timestamp: new Date('2026-08-26T11:00:00.000Z'),
          },
       ]);
-      (prisma.keyOwnership.findMany as jest.Mock)
-         .mockResolvedValueOnce([
-            {
-               id: 'own-1',
-               creatorId: 'key-b',
-               balance: { toString: () => '2' },
-               lockupExpiresAt: new Date('2026-08-26T12:30:00.000Z'),
-            },
-         ])
-         .mockResolvedValueOnce([{ creatorId: 'key-c' }]);
+      (prisma.keyOwnership.findMany as jest.Mock).mockImplementation(
+         ({ where }: { where: Record<string, unknown> }) => {
+            if (where.ownerAddress === wallet && where.lockupExpiresAt) {
+               return [
+                  {
+                     id: 'own-1',
+                     creatorId: 'key-b',
+                     balance: { toString: () => '2' },
+                     lockupExpiresAt: new Date('2026-08-26T12:30:00.000Z'),
+                  },
+               ];
+            }
+            if (where.creatorId && (where.creatorId as { in?: string[] }).in) {
+               return [{ creatorId: 'key-c' }];
+            }
+            return [];
+         }
+      );
+
+      (prisma.creatorProfile.findMany as jest.Mock).mockResolvedValue([]);
 
       redisSets.set(REDIS_KEYS.priceMovedSet, new Set(['key-c']));
       (prisma.creatorPriceSnapshot.findMany as jest.Mock).mockResolvedValue([
@@ -111,9 +122,8 @@ describe('notification.service', () => {
             timestamp: new Date('2026-08-26T10:00:00.000Z'),
          },
       ]);
-      (prisma.keyOwnership.findMany as jest.Mock)
-         .mockResolvedValueOnce([])
-         .mockResolvedValueOnce([]);
+      (prisma.keyOwnership.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.creatorProfile.findMany as jest.Mock).mockResolvedValue([]);
       redisSets.set(REDIS_KEYS.priceMovedSet, new Set());
 
       await markAllNotificationsRead(wallet, now);

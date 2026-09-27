@@ -153,6 +153,50 @@ async function buildKeyDeprecated(
    );
 }
 
+export async function buildKeySunsetFlagged(
+   walletAddress: string,
+   lastReadAt: Date | null
+): Promise<NotificationItem[]> {
+   const holdings = await prisma.keyOwnership.findMany({
+      where: { ownerAddress: walletAddress, balance: { gt: 0 } },
+      select: { creatorId: true },
+   });
+   if (holdings.length === 0) {
+      return [];
+   }
+
+   const keyIds = holdings.map((h: { creatorId: string }) => h.creatorId);
+   const sunsetKeys = await prisma.creatorProfile.findMany({
+      where: { id: { in: keyIds }, deprecatedAt: { not: null } },
+      select: {
+         id: true,
+         deprecatedAt: true,
+         buybackPriceXlm: true,
+         buybackExpiresAt: true,
+      },
+   });
+
+   return sunsetKeys.map((key) => {
+      const createdAt = key.deprecatedAt!;
+      return {
+         id: `key_sunset_flagged:${key.id}`,
+         type: NOTIFICATION_TYPES.KEY_SUNSET_FLAGGED,
+         createdAt: createdAt.toISOString(),
+         read: isRead(createdAt, lastReadAt),
+         payload: {
+            keyId: key.id,
+            sunsetDeadline: key.buybackExpiresAt
+               ? key.buybackExpiresAt.toISOString()
+               : null,
+            buybackPriceXlm:
+               key.buybackPriceXlm !== null && key.buybackPriceXlm !== undefined
+                  ? String(key.buybackPriceXlm)
+                  : null,
+         },
+      };
+   });
+}
+
 async function buildPriceMoved(
    walletAddress: string,
    lastReadAt: Date | null,

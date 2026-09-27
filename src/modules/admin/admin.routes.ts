@@ -8,6 +8,14 @@ import {
    httpGetAuditLog,
 } from './admin.controllers';
 import { httpSyncKeyState } from './key-sync.controllers';
+import {
+   httpCreateMultisigProposal,
+   httpGetMultisigProposalQueue,
+   httpGetMultisigProposalById,
+   httpSignMultisigProposal,
+   httpRejectMultisigProposal,
+} from './multisig-proposal.controllers';
+import aclRouter from '../acl/acl.routes';
 import { getKeySnapshot, KeySnapshotNotFoundError } from './key-snapshot.service';
 import { createAuditEntry } from './audit-log.service';
 import { invalidateProtocolStatusCache } from '../protocol/protocol.routes';
@@ -15,6 +23,8 @@ import {
    analyticsWindowQuerySchema,
    getPlatformAnalytics,
 } from '../keys/key-analytics.service';
+import { flashLoanViolationsQuerySchema } from './flash-loan-violations.schemas';
+import { getFlashLoanViolations } from './flash-loan-violations.service';
 import {
    adminGuard,
    AdminRequest,
@@ -99,9 +109,9 @@ function serializeTimelockAction(action: any) {
             : null,
       ...(countdownMs !== null
          ? {
-             countdownMs,
-             countdown: formatCountdown(countdownMs),
-          }
+              countdownMs,
+              countdown: formatCountdown(countdownMs),
+           }
          : {}),
    };
 }
@@ -115,6 +125,80 @@ adminRouter.post('/keys/:keyId/resume', adminGuard, httpSetKeyTradingPaused);
 adminRouter.post('/keys/:keyId/sync', adminGuard, httpSyncKeyState);
 adminRouter.patch('/protocol-fee', adminGuard, httpUpdateProtocolFee);
 adminRouter.get('/audit-log', adminGuard, httpGetAuditLog);
+
+/**
+ * GET /api/v1/admin/proposals
+ *
+ * List all multisig proposals with pagination and optional status filter.
+ * Requires admin JWT.
+ */
+adminRouter.get('/proposals', adminGuard, httpGetMultisigProposalQueue);
+
+/**
+ * POST /api/v1/admin/proposals
+ *
+ * Create a new multisig proposal requiring multi-sig approval.
+ * Requires admin JWT.
+ */
+adminRouter.post('/proposals', adminGuard, httpCreateMultisigProposal);
+
+/**
+ * GET /api/v1/admin/proposals/:id
+ *
+ * Get detailed information for a single multisig proposal including all signatures.
+ * Requires admin JWT.
+ */
+adminRouter.get('/proposals/:id', adminGuard, httpGetMultisigProposalById);
+
+/**
+ * POST /api/v1/admin/proposals/:id/sign
+ *
+ * Submit a signature/approval for a multisig proposal.
+ * Requires admin JWT and valid signer from ADMIN_MULTISIG_WALLETS.
+ */
+adminRouter.post('/proposals/:id/sign', adminGuard, httpSignMultisigProposal);
+
+/**
+ * POST /api/v1/admin/proposals/:id/reject
+ *
+ * Reject a multisig proposal.
+ * Requires admin JWT and valid signer from ADMIN_MULTISIG_WALLETS.
+ */
+adminRouter.post('/proposals/:id/reject', adminGuard, httpRejectMultisigProposal);
+
+// ── ACL whitelist management (#966) ───────────────────────────
+// GET/POST /admin/acl, DELETE /admin/acl/:contractId, GET /admin/acl/history
+adminRouter.use('/acl', aclRouter);
+
+/**
+ * GET /api/v1/admin/flash-loan-violations?limit=&offset=&include_cleared=&recent_limit=
+ *
+ * Wallets that triggered the on-chain flash loan guard, sorted by violation
+ * frequency (most attempts first) over the cooldown window, with their alert
+ * and auto-suspension state plus the most recent indexed attempts (#938).
+ */
+adminRouter.get(
+   '/flash-loan-violations',
+   adminGuard,
+   async (req: AdminRequest, res, next) => {
+      const parsed = flashLoanViolationsQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+         sendValidationError(
+            res,
+            'Invalid flash loan violations query',
+            zodIssuesToDetails(parsed.error.issues)
+         );
+         return;
+      }
+
+      try {
+         sendSuccess(res, await getFlashLoanViolations(parsed.data));
+      } catch (error) {
+         logger.error({ error }, 'Flash loan violations lookup failed');
+         next(error);
+      }
+   }
+);
 
 /**
  * GET /api/v1/admin/analytics?from=&to=

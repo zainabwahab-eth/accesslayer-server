@@ -237,6 +237,219 @@ Queue depth metrics for indexer workers.
 
 ## Admin Endpoints
 
+### POST /admin/proposals
+
+Create a new multisig proposal requiring multi-sig approval.
+
+- **Auth:** Admin required
+- **Body:**
+
+```json
+{
+  "changeType": "update_fee",
+  "payload": { "feeBps": 500, "treasuryAddress": "GATREASURYADDRESSFORACCESSLAYERTESTING123456789" },
+  "threshold": 2,
+  "totalSigners": 3
+}
+```
+
+- **Response:** `201 Created`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "cm123...",
+    "proposalId": "msig-1234567890-abc123",
+    "changeType": "update_fee",
+    "payload": { "feeBps": 500, "treasuryAddress": "GATREASURYADDRESSFORACCESSLAYERTESTING123456789" },
+    "status": "pending",
+    "threshold": 2,
+    "totalSigners": 3,
+    "proposedBy": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789",
+    "proposedAt": "2026-09-27T10:30:00.000Z",
+    "executedAt": null,
+    "rejectedAt": null,
+    "rejectedBy": null,
+    "rejectionReason": null,
+    "createdAt": "2026-09-27T10:30:00.000Z",
+    "updatedAt": "2026-09-27T10:30:00.000Z",
+    "signatures": [],
+    "approvalCount": 0
+  }
+}
+```
+
+### GET /admin/proposals
+
+List all multisig proposals with pagination and optional status filter.
+
+- **Auth:** Admin required
+- **Query Params:**
+  - `status` (optional): `pending`, `executed`, or `rejected`
+  - `page` (number, default: 1)
+  - `limit` (number, default: 20, max: 100)
+- **Response:** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "cm123...",
+        "proposalId": "msig-1234567890-abc123",
+        "changeType": "update_fee",
+        "payload": { "feeBps": 500 },
+        "status": "pending",
+        "threshold": 2,
+        "totalSigners": 3,
+        "proposedBy": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789",
+        "proposedAt": "2026-09-27T10:30:00.000Z",
+        "executedAt": null,
+        "rejectedAt": null,
+        "rejectedBy": null,
+        "rejectionReason": null,
+        "createdAt": "2026-09-27T10:30:00.000Z",
+        "updatedAt": "2026-09-27T10:30:00.000Z",
+        "signatures": [
+          {
+            "id": "cm456...",
+            "proposalId": "msig-1234567890-abc123",
+            "signer": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789",
+            "signedAt": "2026-09-27T10:31:00.000Z"
+          }
+        ],
+        "approvalCount": 1
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 20,
+      "totalCount": 1,
+      "totalPages": 1,
+      "hasNextPage": false,
+      "hasPrevPage": false
+    }
+  }
+}
+```
+
+### GET /admin/proposals/:id
+
+Get detailed information for a single multisig proposal including all signatures.
+
+- **Auth:** Admin required
+- **Response:** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "cm123...",
+    "proposalId": "msig-1234567890-abc123",
+    "changeType": "update_fee",
+    "payload": { "feeBps": 500 },
+    "status": "pending",
+    "threshold": 2,
+    "totalSigners": 3,
+    "proposedBy": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789",
+    "proposedAt": "2026-09-27T10:30:00.000Z",
+    "executedAt": null,
+    "rejectedAt": null,
+    "rejectedBy": null,
+    "rejectionReason": null,
+    "createdAt": "2026-09-27T10:30:00.000Z",
+    "updatedAt": "2026-09-27T10:30:00.000Z",
+    "signatures": [
+      {
+        "id": "cm456...",
+        "proposalId": "msig-1234567890-abc123",
+        "signer": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789",
+        "signedAt": "2026-09-27T10:31:00.000Z"
+      }
+    ],
+    "approvalCount": 1
+  }
+}
+```
+
+- **Error Response:** `404 Not Found` if proposal does not exist
+
+### POST /admin/proposals/:id/sign
+
+Submit a signature/approval for a multisig proposal. When the threshold is reached, the proposal is automatically executed.
+
+- **Auth:** Admin required (signer must be in ADMIN_MULTISIG_WALLETS)
+- **Body:**
+
+```json
+{
+  "signer": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789"
+}
+```
+
+- **Response:** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "proposalId": "msig-1234567890-abc123",
+    "status": "executed",
+    "approvalCount": 2,
+    "threshold": 2,
+    "executed": true,
+    "signature": {
+      "id": "cm789...",
+      "proposalId": "msig-1234567890-abc123",
+      "signer": "GAADMIN2WALLETADDRESSFORACCESSLAYERTESTING987654321",
+      "signedAt": "2026-09-27T10:32:00.000Z"
+    }
+  }
+}
+```
+
+- **Error Responses:**
+  - `400 Bad Request` if proposal is not in `pending` state
+  - `403 Forbidden` if signer is not authorized
+  - `404 Not Found` if proposal does not exist
+  - `409 Conflict` if signer has already signed
+
+### POST /admin/proposals/:id/reject
+
+Reject a multisig proposal.
+
+- **Auth:** Admin required (rejector must be in ADMIN_MULTISIG_WALLETS)
+- **Body:**
+
+```json
+{
+  "rejector": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789",
+  "reason": "Optional rejection reason"
+}
+```
+
+- **Response:** `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "proposalId": "msig-1234567890-abc123",
+    "status": "rejected",
+    "rejectedAt": "2026-09-27T10:33:00.000Z",
+    "rejectedBy": "GAADMIN1WALLETADDRESSFORACCESSLAYERTESTING123456789",
+    "rejectionReason": "Optional rejection reason"
+  }
+}
+```
+
+- **Error Responses:**
+  - `400 Bad Request` if proposal is not in `pending` state
+  - `403 Forbidden` if rejector is not authorized
+  - `404 Not Found` if proposal does not exist
+
 ### PATCH /admin/creators/:id/metadata
 
 Update creator metadata.
@@ -258,6 +471,56 @@ Replay indexer events.
 
 - **Auth:** Admin required
 - **Response:** `200 OK`
+
+### GET /admin/flash-loan-violations
+
+Wallets that triggered the on-chain flash loan guard (#938), sorted by
+violation frequency (most attempts first) over the configured cooldown
+window, with alert and auto-suspension state.
+
+- **Auth:** Admin required
+- **Query:** `limit` (default `50`, max `100`), `offset` (default `0`),
+  `include_cleared` (default `false`), `recent_limit` (default `5`, max `25`)
+- **Response:** `200 OK`
+
+```json
+{
+   "success": true,
+   "data": {
+      "threshold": 3,
+      "autoSuspendEnabled": true,
+      "cooldownHours": 24,
+      "total": 1,
+      "limit": 50,
+      "offset": 0,
+      "violations": [
+         {
+            "walletAddress": "GABCD...",
+            "violationCount": 4,
+            "keyIds": ["key-1"],
+            "firstViolationAt": "2026-09-26T09:00:00.000Z",
+            "lastViolationAt": "2026-09-26T11:30:00.000Z",
+            "alerted": true,
+            "alertedAt": "2026-09-26T09:45:00.000Z",
+            "alertCount": 2,
+            "suspended": true,
+            "suspendedAt": "2026-09-26T09:45:00.000Z",
+            "suspensionExpiresAt": null,
+            "recentViolations": [
+               {
+                  "keyId": "key-1",
+                  "ledger": 123456,
+                  "txHash": "abc123",
+                  "eventIndex": 0,
+                  "occurredAt": "2026-09-26T11:30:00.000Z",
+                  "clearedAt": null
+               }
+            ]
+         }
+      ]
+   }
+}
+```
 
 ---
 
